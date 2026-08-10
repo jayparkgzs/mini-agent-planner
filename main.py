@@ -4,12 +4,13 @@ import asyncio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
+from scheduler.pipeline import pipeline
 from agent.core import ReActAgent
+from scheduler.pipeline import pipeline
 
 load_dotenv()
 
-app = FastAPI(title="Mini Agent Planner", version="1.0")
+app = FastAPI(title="Mini Agent Planner", version="2.0")
 
 agent = ReActAgent(
     api_key=os.getenv("OPENAI_API_KEY"),
@@ -17,6 +18,8 @@ agent = ReActAgent(
     model=os.getenv("MODEL_NAME", "gpt-3.5-turbo")
 )
 
+
+# ============ 原有接口 ============
 
 class ChatRequest(BaseModel):
     message: str
@@ -60,12 +63,59 @@ async def get_history():
 @app.get("/")
 async def root():
     return {
-        "message": "Mini Agent Planner 已启动",
-        "usage": {
+        "message": "Mini Agent Planner v2.0 已启动",
+        "endpoints": {
             "chat": "POST /chat",
             "confirm": "POST /confirm",
-            "history": "GET /history"
+            "history": "GET /history",
+            "review": "POST /review - 代码审查流水线",
+            "review_agents": "GET /review/agents"
         }
+    }
+
+
+# ============ 新增：代码审查流水线接口 ============
+
+class ReviewRequest(BaseModel):
+    code: str
+    filename: str = "main.py"
+    pr_id: str = "PR-001"
+
+
+@app.post("/review")
+async def code_review(request: ReviewRequest):
+    """
+    自动化代码审查流水线
+    并行执行安全、性能、规范三个子 Agent
+    """
+    try:
+        report = await pipeline.run(
+            code=request.code,
+            filename=request.filename,
+            pr_id=request.pr_id
+        )
+        
+        return {
+            "pr_id": report.pr_id,
+            "overall_score": report.overall_score,
+            "status": report.status,
+            "duration_ms": round(report.duration_ms, 2),
+            "reviews": report.reviews,
+            "markdown_report": report.summary
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/review/agents")
+async def list_review_agents():
+    """列出代码审查流水线中的子 Agent"""
+    return {
+        "agents": [
+            {"name": "security", "description": "安全审查（漏洞、密钥泄露、注入）"},
+            {"name": "performance", "description": "性能审查（N+1查询、循环优化）"},
+            {"name": "style", "description": "规范审查（命名、缩进、文档）"}
+        ]
     }
 
 

@@ -1,5 +1,3 @@
-cat > agent/core.py << 'EOF'
-# agent/core.py
 import json
 from typing import Dict, List
 from openai import OpenAI
@@ -10,10 +8,6 @@ from memory.short_term import ShortTermMemory
 
 
 class ReActAgent:
-    """
-    ReAct Agent 核心引擎（第2周升级版：接入记忆模块）
-    """
-    
     def __init__(self, api_key: str, base_url: str = None, model: str = "gpt-3.5-turbo"):
         kwargs = {"api_key": api_key}
         if base_url:
@@ -24,9 +18,8 @@ class ReActAgent:
         self.memory = ShortTermMemory(session_id="default")
         self.pending_confirm = None
         self.history = []
-    
+
     def run(self, user_input: str) -> Dict:
-        # 保存用户输入到记忆
         self.memory.add("user", user_input)
         
         if self.pending_confirm:
@@ -45,7 +38,6 @@ class ReActAgent:
         system_prompt = self._build_system_prompt(plan_text)
         messages = [{"role": "system", "content": system_prompt}]
         
-        # 加入历史记忆
         recent_memory = self.memory.get_recent(10)
         for msg in recent_memory:
             if msg["role"] == "user":
@@ -53,7 +45,6 @@ class ReActAgent:
             elif msg["role"] == "assistant":
                 messages.append({"role": "assistant", "content": msg["content"]})
         
-        # 避免重复添加当前输入
         if not recent_memory or recent_memory[-1]["content"] != user_input:
             messages.append({"role": "user", "content": user_input})
         
@@ -72,7 +63,6 @@ class ReActAgent:
             
             if not message.tool_calls:
                 answer = message.content
-                # 保存助手回复到记忆
                 self.memory.add("assistant", answer)
                 self.history.append({"user": user_input, "assistant": answer})
                 return {
@@ -121,7 +111,7 @@ class ReActAgent:
             "status": "error",
             "result": "执行步数超过限制，任务未完成"
         }
-    
+
     def confirm(self, confirm: bool) -> Dict:
         if not self.pending_confirm:
             return {"status": "error", "result": "没有待确认的操作"}
@@ -142,7 +132,7 @@ class ReActAgent:
                 "status": "completed",
                 "result": "已取消操作"
             }
-    
+
     def _build_system_prompt(self, plan_text: str) -> str:
         tools_desc = []
         for schema in registry.get_schemas():
@@ -164,4 +154,3 @@ class ReActAgent:
 4. 所有操作完成后，给出最终答案
 5. 当需要写入文件时，直接调用 write_file 工具，系统会自动处理安全确认
 """
-EOF
