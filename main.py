@@ -119,6 +119,57 @@ async def list_review_agents():
     }
 
 
+# ============ 新增：观测与诊断接口 ============
+
+from observability.tracer import tracer
+from observability.debugger import AgentDebugger
+
+debugger = AgentDebugger()
+
+
+@app.get("/traces")
+async def get_traces():
+    """获取所有追踪记录"""
+    return {
+        "total": len(tracer.traces),
+        "traces": tracer.traces[-10:]  # 最近10条
+    }
+
+
+@app.get("/traces/{trace_id}")
+async def get_trace(trace_id: str):
+    """获取指定追踪详情"""
+    for t in tracer.traces:
+        if t["trace_id"] == trace_id:
+            return t
+    raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@app.post("/diagnose")
+async def diagnose():
+    """
+    诊断最近一次失败
+    """
+    failures = tracer.get_failure_traces()
+    if not failures:
+        return {"status": "ok", "message": "最近没有失败记录"}
+    
+    last_failure = failures[-1]
+    diagnosis = debugger.analyze(last_failure)
+    return diagnosis
+
+
+@app.get("/diagnose/report")
+async def diagnosis_report():
+    """
+    生成失败模式统计报告
+    """
+    analysis = debugger.analyze_all_failures(tracer.traces)
+    return {
+        "report": analysis,
+        "total_traces": len(tracer.traces),
+        "failure_rate": len(tracer.get_failure_traces()) / len(tracer.traces) if tracer.traces else 0
+    }
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
